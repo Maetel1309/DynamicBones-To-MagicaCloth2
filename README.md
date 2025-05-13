@@ -53,7 +53,7 @@ This Unity Editor script provides a utility to convert setups using `DynamicBone
 ## How to Use
 
 1.  **Prerequisites:**
-    *   Ensure you have both Dynamic Bone and MagicaCloth V2 imported into your Unity project.
+    *   Ensure you have both Dynamic Bone and MagicaCloth V2 imported into your Unity project. (Magica Cloth 1 is unsupported)
 2.  **Installation:**
     *   Place the `DynamicBoneToMagicaClothConverter.cs` script inside an `Editor` folder in your Unity project (e.g., `Assets/Editor/`).
 3.  **Hierarchy Conversion:**
