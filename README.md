@@ -1,4 +1,4 @@
-# Dynamic Bone to MagicaCloth2 Converter
+# Dynamic Bone to MagicaCloth V2 Converter
 
 This Unity Editor script provides a utility to convert setups using `DynamicBone` components and colliders to `MagicaCloth2` equivalents. It aims to automate a significant portion of the migration process, but **manual review and tuning of the resulting MagicaCloth components will always be necessary.**
 
