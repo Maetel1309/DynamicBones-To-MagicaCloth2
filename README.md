@@ -85,7 +85,7 @@ Feel free to fork this repository, make improvements, and submit pull requests!
 
 MIT License
 
-Copyright (c) 2025 Maetel
+Copyright (c) 2025 Maetel1309
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
