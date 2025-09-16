@@ -36,15 +36,28 @@ public class DynamicBoneToMagicaClothConverter : EditorWindow
         // Add more keywords here as needed
     };
 
-    [MenuItem("Tools/Convert DB to MagicaCloth V2 (Selected Hierarchy)")]
-    [MenuItem("GameObject/Convert Hierarchy to MagicaCloth V2", false, 0)] // Added for Hierarchy context menu
-    static void ConvertSelected()
+    [MenuItem("Tools/Convert DB to MagicaCloth V2/Hierarchy - Convert All (Warn on Exclusions)", false, 0)]
+    [MenuItem("GameObject/Convert Hierarchy to MagicaCloth V2/Convert All (Warn on Exclusions)", false, 0)]
+    static void ConvertHierarchyAll()
+    {
+        InitiateHierarchyConversion(false);
+    }
+
+    [MenuItem("Tools/Convert DB to MagicaCloth V2/Hierarchy - Skip Components with Exclusions", false, 1)]
+    [MenuItem("GameObject/Convert Hierarchy to MagicaCloth V2/Skip Components with Exclusions", false, 1)]
+    static void ConvertHierarchySkipExclusions()
+    {
+        InitiateHierarchyConversion(true);
+    }
+
+    private static void InitiateHierarchyConversion(bool skipWithExclusions)
     {
         GameObject selectedObject = Selection.activeGameObject;
 
         if (selectedObject == null)
         {
-            EditorUtility.DisplayDialog("Conversion Error", "No GameObject selected. Please select the root GameObject containing Dynamic Bone components.", "OK");
+            EditorUtility.DisplayDialog("Conversion Error",
+                "No GameObject selected. Please select the root GameObject containing Dynamic Bone components.", "OK");
             return;
         }
 
@@ -52,19 +65,21 @@ public class DynamicBoneToMagicaClothConverter : EditorWindow
 
         if (dynamicBones.Length == 0)
         {
-            EditorUtility.DisplayDialog("Conversion Info", $"No Dynamic Bone components found in the hierarchy of '{selectedObject.name}'.", "OK");
+            EditorUtility.DisplayDialog("Conversion Info",
+                $"No Dynamic Bone components found in the hierarchy of '{selectedObject.name}'.", "OK");
             return;
         }
+
+        string actionDescription = skipWithExclusions
+            ? "convert all components EXCEPT those with Exclusions"
+            : "convert ALL components (and warn about those with Exclusions)";
 
         bool proceedConversion = EditorUtility.DisplayDialog(
             "Confirm Hierarchy Conversion",
             $"Found {dynamicBones.Length} Dynamic Bone component(s) in the hierarchy of '{selectedObject.name}'.\n\n" +
-            "This will attempt to convert all found Dynamic Bone components to MagicaCloth V2 equivalents. " +
-            "Original Dynamic Bone components and their associated Dynamic Bone Colliders will be removed and replaced.\n\n" +
-            "Mapping is APPROXIMATE. Manual tuning WILL be required after conversion.\n\n" +
-            "This operation can be undone. A final cleanup step for any unprocessed DynamicBones will also offer an Undo.\n\n" +
-            "Do you want to proceed with the conversion?",
-            "Yes, Convert Hierarchy",
+            $"This will {actionDescription}.\n\n" +
+            "This operation can be undone. Do you want to proceed?",
+            "Yes, Convert",
             "Cancel");
 
         if (!proceedConversion)
@@ -72,7 +87,21 @@ public class DynamicBoneToMagicaClothConverter : EditorWindow
             return;
         }
 
-        ConvertDynamicBones(dynamicBones, selectedObject.name + " (Hierarchy)");
+        // Find or create the container object for the new MagicaCloth components
+        Transform containerTransform = selectedObject.transform.Find("MC2");
+        GameObject mc2Container;
+        if (containerTransform == null)
+        {
+            mc2Container = new GameObject("MC2");
+            Undo.RegisterCreatedObjectUndo(mc2Container, "Create MC2 Container");
+            mc2Container.transform.SetParent(selectedObject.transform, false); // Place it at the root of the selection
+        }
+        else
+        {
+            mc2Container = containerTransform.gameObject;
+        }
+
+        ConvertDynamicBones(dynamicBones, selectedObject.name + " (Hierarchy)", skipWithExclusions, mc2Container);
         CleanupRemainingDynamicBones(new GameObject[] { selectedObject });
     }
 
@@ -87,9 +116,15 @@ public class DynamicBoneToMagicaClothConverter : EditorWindow
             return;
         }
 
+        string exclusionWarning = "";
+        if (db.m_Exclusions != null && db.m_Exclusions.Count > 0)
+        {
+            exclusionWarning = "\n\nWARNING: This component uses Exclusions. These will NOT be automatically converted and require manual setup in MagicaCloth.";
+        }
+
         bool proceed = EditorUtility.DisplayDialog(
             "Confirm Single Conversion",
-            $"Convert the Dynamic Bone component on '{db.gameObject.name}' to MagicaCloth V2?\n\n" +
+            $"Convert the Dynamic Bone component on '{db.gameObject.name}' to MagicaCloth V2?{exclusionWarning}\n\n" +
             "This will remove the Dynamic Bone component and its associated Dynamic Bone Colliders, replacing them with MagicaCloth equivalents.\n\n" +
             "Mapping is APPROXIMATE. Manual tuning WILL be required.\n\n" +
             "Proceed?",
@@ -101,14 +136,33 @@ public class DynamicBoneToMagicaClothConverter : EditorWindow
             return;
         }
 
+        // Find the hierarchy root to place the "MC2" container
+        Transform root = db.transform.root;
+
+        // Find or create the container object at the root
+        Transform containerTransform = root.Find("MC2");
+        GameObject mc2Container;
+        if (containerTransform == null)
+        {
+            mc2Container = new GameObject("MC2");
+            Undo.RegisterCreatedObjectUndo(mc2Container, "Create MC2 Container");
+            mc2Container.transform.SetParent(root, false);
+        }
+        else
+        {
+            mc2Container = containerTransform.gameObject;
+        }
+
         DynamicBone[] dynamicBonesToConvert = new DynamicBone[] { db };
-        ConvertDynamicBones(dynamicBonesToConvert, db.gameObject.name + " (Single Component)");
+        // For single component conversion, the user is explicitly targeting it. We always attempt conversion (never skip).
+        ConvertDynamicBones(dynamicBonesToConvert, db.gameObject.name + " (Single Component)", false, mc2Container);
         CleanupRemainingDynamicBones(new GameObject[] { db.gameObject });
     }
 
-    public static void ConvertDynamicBones(DynamicBone[] dynamicBones, string contextName)
+    public static void ConvertDynamicBones(DynamicBone[] dynamicBones, string contextName, bool skipWithExclusions, GameObject magicaClothContainer)
     {
         int convertedCount = 0;
+        int skippedCount = 0;
         Undo.SetCurrentGroupName("Convert DB to MagicaCloth V2");
         int group = Undo.GetCurrentGroup();
 
@@ -116,30 +170,56 @@ public class DynamicBoneToMagicaClothConverter : EditorWindow
         {
             GameObject targetGo = db.gameObject;
 
-            // No existing MagicaCloth, so add a new one
-            MagicaCloth mc = Undo.AddComponent<MagicaCloth>(targetGo);
+            // Check for exclusions and skip if requested by the user
+            if (skipWithExclusions && db.m_Exclusions != null && db.m_Exclusions.Count > 0)
+            {
+                List<string> exclusionNames = new List<string>();
+                foreach (Transform exclusion in db.m_Exclusions)
+                {
+                    if (exclusion != null) {
+                        exclusionNames.Add(exclusion.name);
+                    }
+                }
+                Debug.Log($"SKIPPING: Dynamic Bone on '{targetGo.name}' was skipped because it uses Exclusions: [{string.Join(", ", exclusionNames)}]. " +
+                          "This component was not converted or removed.", targetGo);
+                skippedCount++;
+                continue; // Skip to the next DynamicBone
+            }
+
+            // Create a new child GameObject inside the container for this specific MagicaCloth component
+            GameObject newMcGo = new GameObject($"MC_{targetGo.name}");
+            Undo.RegisterCreatedObjectUndo(newMcGo, $"Create MC GameObject for {targetGo.name}");
+
+            // Match the transform of the original GameObject that held the DynamicBone component
+            newMcGo.transform.position = targetGo.transform.position;
+            newMcGo.transform.rotation = targetGo.transform.rotation;
+            newMcGo.transform.localScale = targetGo.transform.localScale;
+
+            // Parent it to the container, preserving its new world position
+            newMcGo.transform.SetParent(magicaClothContainer.transform, true);
+            // Add the new MagicaCloth component to the newly created child GameObject
+            MagicaCloth mc = Undo.AddComponent<MagicaCloth>(newMcGo);
             if (mc == null)
             {
-                Debug.LogError($"Failed to add MagicaCloth component to '{targetGo.name}'. Skipping.", targetGo);
+                Debug.LogError($"Failed to add MagicaCloth component to the new GameObject '{newMcGo.name}'. Skipping conversion for DB on '{targetGo.name}'.", newMcGo);
+                Undo.DestroyObjectImmediate(newMcGo); // Clean up the failed GameObject
                 continue;
             }
 
             var sdata = mc.SerializeData;
              if (sdata == null) {
-                 Debug.LogError($"Failed to access or initialize SerializeData for MagicaCloth on '{targetGo.name}'. Skipping. You might need to manually add/configure this component.", targetGo);
-                 Undo.DestroyObjectImmediate(mc);
+                 Debug.LogError($"Failed to access or initialize SerializeData for MagicaCloth on '{newMcGo.name}'. Skipping. You might need to manually add/configure this component.", newMcGo);
+                 Undo.DestroyObjectImmediate(newMcGo); // Clean up the failed GameObject and its component
                  continue;
             }
 
             // Determine ClothType: Default to BoneCloth, switch to BoneSpring if keywords match
             sdata.clothType = ClothProcess.ClothType.BoneCloth; // Default
-            bool switchedToBoneSpring = false;
             foreach (string keyword in boneSpringKeywords)
             {
                 if (targetGo.name.ToLowerInvariant().Contains(keyword.ToLowerInvariant()))
                 {
                     sdata.clothType = ClothProcess.ClothType.BoneSpring;
-                    switchedToBoneSpring = true;
                     break; 
                 }
             }
@@ -399,11 +479,15 @@ public class DynamicBoneToMagicaClothConverter : EditorWindow
         }
 
         Undo.CollapseUndoOperations(group);
-        Debug.Log($"Conversion Complete for '{contextName}': Attempted {dynamicBones.Length} Dynamic Bones, added/modified {convertedCount} MagicaCloth components. Original DynamicBone components removed. Please review results and Undo if necessary.");
+        string summaryMessage = $"Conversion Complete for '{contextName}': Attempted {dynamicBones.Length} Dynamic Bones. " +
+                                $"Converted: {convertedCount}. " +
+                                (skippedCount > 0 ? $"Skipped (due to exclusions): {skippedCount}. " : "") +
+                                "Please review results and Undo if necessary.";
+        Debug.Log(summaryMessage);
     }
 
     /// <summary>
-    /// Silently finds and removes any DynamicBone components remaining within the specified roots.
+    /// Finds any DynamicBone components remaining within the specified roots and prompts the user for removal.
     /// </summary>
     static void CleanupRemainingDynamicBones(GameObject[] rootsToScan)
     {
@@ -420,13 +504,24 @@ public class DynamicBoneToMagicaClothConverter : EditorWindow
 
         if (dbsToCleanup.Count > 0)
         {
-            Undo.SetCurrentGroupName("Silent Cleanup of Remaining DynamicBones");
+            bool proceedCleanup = EditorUtility.DisplayDialog(
+                "Cleanup Remaining Dynamic Bones",
+                $"Found {dbsToCleanup.Count} Dynamic Bone component(s) that were not converted (e.g., they were skipped due to having Exclusions).\n\n" +
+                "Do you want to remove these remaining components?\n\n" +
+                "This operation can be undone separately.",
+                "Yes, Remove Them",
+                "No, Keep Them");
+
+            if (!proceedCleanup) return;
+
+            Undo.SetCurrentGroupName("Cleanup of Remaining DynamicBones");
             int cleanupGroup = Undo.GetCurrentGroup();
             foreach (DynamicBone db in dbsToCleanup)
             {
                 if (db != null) Undo.DestroyObjectImmediate(db);
             }
             Undo.CollapseUndoOperations(cleanupGroup);
+            Debug.Log($"Cleanup complete: Removed {dbsToCleanup.Count} remaining Dynamic Bone components.");
         }
     }
     
