@@ -4,15 +4,19 @@ This Unity Editor script provides a utility to convert setups using `DynamicBone
 
 ## Features
 
-*   **Hierarchy Conversion:**
-    *   Converts all `DynamicBone` components found within the selected GameObject and its children.
-    *   Accessible via "Tools > Convert DB to MagicaCloth V2 (Selected Hierarchy)".
-    *   Accessible by right-clicking a GameObject in the Hierarchy and selecting "Convert Hierarchy to MagicaCloth V2".
+*   **Centralized `MC2` Hierarchy:**
+    *   Automatically creates a parent GameObject named `MC2` at the root of the avatar.
+    *   For each converted component, a new child GameObject (e.g., `MC_HairRoot`) is created under `MC2`, with its transform matching the original bone. This keeps all physics components neatly organized in one place.
+*   **Hierarchy Conversion Options:**
+    *   **Convert All:** Converts all `DynamicBone` components, logging warnings for those with `Exclusions`.
+    *   **Skip Exclusions:** Converts all components *except* those that use `Exclusions`, leaving them untouched for manual conversion later.
+    *   Accessible via `Tools > Convert DB to MagicaCloth V2 > ...` and the GameObject's right-click context menu.
 *   **Single Component Conversion:**
     *   Converts a specific `DynamicBone` component.
     *   Accessible by right-clicking a `DynamicBone` component in the Inspector and selecting "Convert This Component to MagicaCloth V2".
 *   **Property Mapping (Approximate):**
     *   **Roots:** `m_Root` and `m_Roots` are mapped to MagicaCloth `rootBones`.
+    *   **Transforms:** The position, rotation, and scale of the original `DynamicBone` GameObject are copied to the new `MC_...` container GameObject.
     *   **Gravity:** `m_Gravity` vector is mapped to MagicaCloth gravity magnitude and direction.
     *   **Damping:** `m_Damping` and `m_DampingDistrib` (AnimationCurve) are mapped.
     *   **Inertia:** `m_Inert` is mapped to MagicaCloth `worldInertia`.
@@ -37,7 +41,7 @@ This Unity Editor script provides a utility to convert setups using `DynamicBone
 *   **Undo System Integration:**
     *   All changes made by the script (component additions, removals, property modifications) are registered with Unity's Undo system.
 *   **Final Cleanup:**
-    *   After the main conversion, the script performs a check for any `DynamicBone` components that might have been missed or skipped within the original conversion scope.
+    *   After the main conversion, the script performs a check for any `DynamicBone` components that were not processed (e.g., because you chose to skip them).
     *   If leftovers are found, a dialog prompts the user to confirm their removal. This cleanup is also undoable as a separate step.
 
 ## What It Doesn't Do / Limitations
@@ -58,18 +62,21 @@ This Unity Editor script provides a utility to convert setups using `DynamicBone
     *   Place the `DynamicBoneToMagicaClothConverter.cs` script inside an `Editor` folder in your Unity project (e.g., `Assets/Editor/`).
 3.  **Hierarchy Conversion:**
     *   Select the root GameObject in your Hierarchy window that contains the `DynamicBone` components you wish to convert.
-    *   Go to **Tools > Convert DB to MagicaCloth V2 (Selected Hierarchy)** from the main menu.
-    *   Alternatively, right-click on the selected GameObject in the Hierarchy and choose **Convert Hierarchy to MagicaCloth V2**.
-    *   A confirmation dialog will appear. Review the information and click "Yes, Convert Hierarchy" to proceed.
+    *   Go to **Tools > Convert DB to MagicaCloth V2** and choose one of the conversion options:
+        *   **Hierarchy - Convert All (Warn on Exclusions)**
+        *   **Hierarchy - Skip Components with Exclusions**
+    *   Alternatively, right-click on the selected GameObject in the Hierarchy and choose from the **Convert Hierarchy to MagicaCloth V2** submenu.
+    *   A confirmation dialog will appear. Review the information and click "Yes, Convert" to proceed.
 4.  **Single Component Conversion:**
     *   Select the GameObject that has the `DynamicBone` component you want to convert.
     *   In the Inspector window, right-click on the header of the `DynamicBone` component.
     *   Choose **Convert This Component to MagicaCloth V2**.
     *   A confirmation dialog will appear. Click "Yes, Convert This Component" to proceed.
 5.  **Review & Cleanup:**
-    *   After the conversion, check the Unity Console for any warnings or informational messages. These messages will guide you on properties that require manual attention.
-    *   If any `DynamicBone` components were not processed during the main conversion (e.g., due to an error or if they had exclusions and you chose to skip them in a previous version of this script), a final cleanup dialog will appear, offering to remove them.
-    *   **Thoroughly inspect and test** the converted GameObjects. Adjust MagicaCloth parameters as needed to achieve the desired simulation.
+    *   After the conversion, check the Unity Console for any warnings or informational messages. These will guide you on properties that require manual attention.
+    *   A new `MC2` GameObject will be present at the root of your selection. **Inspect its children** to find and tune the newly created `MagicaCloth` components.
+    *   If any `DynamicBone` components were not processed (e.g., because you chose to skip them), a final cleanup dialog will appear, offering to remove them.
+    *   **Thoroughly inspect and test** the converted setup.
 
 ## Important Notes
 
@@ -83,9 +90,7 @@ Feel free to fork this repository, make improvements, and submit pull requests!
 
 ## License
 
-MIT License
-
-Copyright (c) 2025 Maetel1309
+MIT License - Copyright (c) 2024 Maetel1309
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
